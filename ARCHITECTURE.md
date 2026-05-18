@@ -56,9 +56,9 @@ usa le proprie credenziali (che n8n già autorizza) — non servono credenziali 
 
 | Agente | Input | Output |
 |--------|-------|--------|
-| **Orchestrator** | messaggio utente in linguaggio naturale | coordina gli altri, gestisce dialogo Telegram e checkpoint HITL |
+| **Orchestrator** | messaggio utente in linguaggio naturale | classifica la richiesta, coordina il percorso giusto, gestisce dialogo Telegram e HITL |
 | **Analyzer** | workflow JSON + execution logs | diagnosi strutturata — solo analisi, nessuna proposta di fix |
-| **Fixer** | diagnosi dell'Analyzer | JSON modificato + spiegazione human-readable delle modifiche |
+| **Fixer AI** | diagnosi dell'Analyzer | JSON modificato + spiegazione human-readable delle modifiche |
 | **Validator** | JSON originale + patch del Fixer | semaforo verde oppure lista obiezioni |
 
 Note implementative:
@@ -66,9 +66,39 @@ Note implementative:
 - Analyzer e Validator girano sullo stesso modello con **system prompt diversi** — il Validator non sa di essere "lo stesso" del Fixer (evita confirmation bias)
 - Nessun agente agisce su n8n direttamente: solo l'Orchestrator chiama i tool, su conferma utente
 
+### Routing Orchestrator: deterministico vs AI
+
+```
+Richiesta utente
+      │
+      ▼
+Orchestrator classifica
+      │
+      ├── operazione MECCANICA (parametro noto, struttura prevedibile)
+      │         └──→ Fixer deterministico ──→ diff ──→ HITL ──→ applica
+      │
+      └── operazione COMPLESSA (debug, logica, ristruttura)
+                └──→ Analyzer → Fixer AI → Validator ──→ HITL ──→ applica
+```
+
+**Operazioni meccaniche** (nessun LLM nel fix, solo Python + jsonpath):
+- Aggiorna modello AI in tutti i nodi di un tipo
+- Cambia URL endpoint in nodi HTTP
+- Sostituisci nome credenziale ovunque appaia
+- Abilita/disabilita tutti i nodi di un tipo
+- Aggiorna timeout/retry su nodi selezionati
+
+**Operazioni complesse** (richiedono ragionamento):
+- Debug di un flusso che fallisce
+- Fix di logica (connessioni sbagliate, condizioni errate)
+- Ristrutturazione di un workflow
+- Aggiunta di error handling
+
 ---
 
-## Tool n8n (API REST)
+## Tool layer
+
+### Tool n8n (API REST) — lettura/scrittura su istanza
 
 | Tool | Metodo | Endpoint |
 |------|--------|----------|
@@ -80,6 +110,18 @@ Note implementative:
 | `deactivate_workflow` | POST | `/api/v1/workflows/{id}/deactivate` |
 
 Tutti autenticati con `X-N8N-API-KEY: {user_api_key}`.
+
+### Tool deterministici — manipolazione JSON locale (nessuna chiamata n8n)
+
+| Tool | Input | Output |
+|------|-------|--------|
+| `find_nodes_by_type` | workflow JSON, node type | lista nodi trovati con path |
+| `find_nodes_by_parameter` | workflow JSON, param, valore | lista nodi dove `param = valore` |
+| `bulk_replace_parameter` | workflow JSON, param, old, new | workflow JSON modificato |
+| `diff_workflow` | JSON originale, JSON modificato | diff leggibile per l'utente |
+
+Implementati in Python con traversal del dict — no LLM, no jsonpath esterno, zero dipendenze aggiuntive.
+Output di `diff_workflow` è sempre mostrato all'utente **prima** di qualsiasi conferma.
 
 ---
 
