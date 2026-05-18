@@ -1,0 +1,36 @@
+name: Agent Orchestrator
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task to assign to the Claude agent"
+        required: false
+        default: "List all available flows and trigger each one."
+  schedule:
+    - cron: "0 8 * * *"  # daily at 08:00 UTC
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r agent/requirements.txt
+
+      - name: Run orchestrator
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          N8N_BASE_URL: ${{ secrets.N8N_BASE_URL }}
+          N8N_AUTH_TOKEN: ${{ secrets.N8N_AUTH_TOKEN }}
+          N8N_AVAILABLE_FLOWS: ${{ vars.N8N_AVAILABLE_FLOWS }}
+          TASK: ${{ github.event.inputs.task || 'List all available flows and trigger each one.' }}
+        run: python agent/orchestrator.py
