@@ -107,6 +107,71 @@ Questo è il punto critico. Le API key n8n danno accesso completo ai workflow de
 
 ---
 
+## Rollback
+
+### Strategia: snapshot automatico pre-modifica
+
+Prima di ogni `update_workflow`, il sistema salva automaticamente il JSON completo del workflow
+su Supabase. Non serve chiedere — è trasparente e sempre attivo.
+
+```
+update_workflow(id, new_json)
+  └─ 1. GET /workflows/{id}          ← leggi stato attuale
+  └─ 2. salva snapshot su Supabase   ← SEMPRE, prima di tutto
+  └─ 3. PUT /workflows/{id}          ← applica modifica
+```
+
+### Schema Supabase: tabella `workflow_snapshots`
+
+| Colonna | Tipo | Descrizione |
+|---------|------|-------------|
+| `id` | uuid | PK |
+| `batch_id` | uuid | raggruppa i flow modificati nella stessa operazione |
+| `user_id` | text | chi ha fatto la modifica |
+| `workflow_id` | text | ID n8n del workflow |
+| `workflow_name` | text | nome leggibile (per il bot) |
+| `snapshot_json` | jsonb | JSON completo del workflow prima della modifica |
+| `was_active` | bool | stato attivazione prima della modifica |
+| `operation` | text | descrizione dell'operazione (es. "aggiorna modello Claude") |
+| `created_at` | timestamp | quando è stato salvato lo snapshot |
+
+### Rollback singolo flow
+
+```
+Utente: "Annulla la modifica a sync-products"
+
+1. Bot mostra: "sync-products modificato il 18/05 alle 14:32 (aggiorna modello Claude)"
+2. "Ripristino il workflow alla versione precedente. Confermi?" [Sì / No]
+3. PUT /workflows/{id} con snapshot_json
+4. Se was_active=true → riattiva; se false → lascia disattivo
+5. Snapshot usato marcato come rolled_back (non eliminato — serve storia)
+```
+
+### Rollback di un intero batch
+
+```
+Utente: "Annulla tutto quello che hai fatto prima"
+
+1. Bot mostra lista flow del batch con timestamp
+2. "Ripristino 7 workflow. Questa operazione non si può annullare. Confermi?" [Sì / No]
+3. Rollback uno per uno, con progress live
+4. Stop disponibile anche qui — mostra cosa è già stato ripristinato
+```
+
+### Cosa il rollback NON può fare (da comunicare chiaramente all'utente)
+
+- **Non annulla le esecuzioni già avvenute** con il workflow modificato
+- **Non ripristina workflow eliminati** (operazione di delete bloccata by design — non esposta come tool)
+- **Non è infinito**: si conservano gli ultimi N snapshot per workflow (es. 10), i più vecchi vengono purgati
+
+### Retention snapshot
+
+- Default: ultimi **10 snapshot per workflow**
+- I batch recenti sono sempre conservati integralmente (anche se superano quota)
+- Purge automatico dei più vecchi via cron o trigger Supabase
+
+---
+
 ## Human-in-the-Loop (HITL)
 
 Principio: **più flow coinvolti = più checkpoint obbligatori**. Il sistema non applica mai
