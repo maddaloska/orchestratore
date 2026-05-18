@@ -62,9 +62,10 @@ def trigger_n8n_flow(flow_name: str, payload: dict | None = None) -> dict:
         response.raise_for_status()
         return {"status": response.status_code, "body": response.json()}
     except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP {e.response.status_code}: {e.response.text}"}
+        # Avoid leaking response body (may contain sensitive data) into logs
+        return {"error": f"HTTP {e.response.status_code}"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": type(e).__name__}
 
 
 def dispatch_tool(name: str, tool_input: dict) -> str:
@@ -80,11 +81,15 @@ def dispatch_tool(name: str, tool_input: dict) -> str:
     return json.dumps(result)
 
 
-def run(task: str) -> str:
-    print(f"[orchestrator] task: {task}")
-    messages = [{"role": "user", "content": task}]
+MAX_TOOL_ROUNDS = 20
 
-    while True:
+
+def run(task: str) -> str:
+    print("[orchestrator] starting task")
+    messages = [{"role": "user", "content": task}]
+    rounds = 0
+
+    while rounds < MAX_TOOL_ROUNDS:
         response = client.messages.create(
             model="claude-opus-4-7",
             max_tokens=4096,
@@ -92,23 +97,21 @@ def run(task: str) -> str:
             messages=messages,
         )
 
-        # Append assistant turn
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason == "end_turn":
-            # Extract final text
             for block in response.content:
                 if hasattr(block, "text"):
                     return block.text
             return ""
 
         if response.stop_reason == "tool_use":
+            rounds += 1
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
-                    print(f"[orchestrator] calling tool: {block.name} input={block.input}")
+                    print(f"[orchestrator] tool call: {block.name}")
                     output = dispatch_tool(block.name, block.input)
-                    print(f"[orchestrator] tool result: {output}")
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -119,9 +122,10 @@ def run(task: str) -> str:
 
             messages.append({"role": "user", "content": tool_results})
         else:
-            # Unexpected stop reason
             break
 
+    if rounds >= MAX_TOOL_ROUNDS:
+        return "Error: max tool rounds reached."
     return ""
 
 
