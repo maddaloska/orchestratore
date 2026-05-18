@@ -107,6 +107,53 @@ Questo è il punto critico. Le API key n8n danno accesso completo ai workflow de
 
 ---
 
+## Human-in-the-Loop (HITL)
+
+Principio: **più flow coinvolti = più checkpoint obbligatori**. Il sistema non applica mai
+modifiche in autonomia. L'utente è sempre l'ultimo a premere "vai".
+
+### Livelli di rischio e checkpoint
+
+| Livello | Scenario | Checkpoint |
+|---------|----------|------------|
+| **L1** | Modifica su 1 flow, cambio minore (es. rename nodo) | 1 conferma: "Applico?" |
+| **L2** | Modifica su 1 flow, cambio strutturale (es. logica nodo) | Mostra diff → conferma |
+| **L3** | Modifica su N flow, stessa operazione (es. aggiorna modello Claude) | Mostra lista flow coinvolti + diff campione → conferma batch → progress live |
+| **L4** | Modifica su N flow, operazioni diverse | Revisione obbligatoria flow per flow, nessun "applica tutto" |
+
+### Caso d'uso emblematico: aggiornamento modello Claude su tutti i nodi AI
+
+```
+Utente: "Aggiorna il modello Claude a claude-opus-4-7 in tutti i flussi"
+
+1. Analyzer scansiona tutti i workflow
+2. Trova: 12 nodi AI distribuiti su 7 workflow
+3. Bot mostra riepilogo:
+   ──────────────────────────────────────
+   Ho trovato 12 nodi AI su 7 workflow:
+   • sync-products        → 3 nodi  (claude-3-opus → claude-opus-4-7)
+   • daily-report         → 2 nodi  (claude-3-sonnet → claude-opus-4-7)
+   • notify-slack         → 1 nodo  (claude-3-opus → claude-opus-4-7)
+   [... altri 4 workflow ...]
+
+   Vuoi procedere? [Sì / No / Mostrami i dettagli]
+   ──────────────────────────────────────
+4. Utente sceglie "Mostrami i dettagli" → diff per ogni workflow
+5. Utente conferma → il sistema aggiorna UN flow alla volta
+6. Dopo ogni flow: "✓ sync-products aggiornato (3/7). Continuo?"
+   (opzione pausa/annulla sempre disponibile)
+7. Al termine: riepilogo finale + audit log
+```
+
+### Regole fisse (non bypassabili)
+
+- **Mai agire su più di 1 flow senza conferma esplicita**
+- **Mai attivare un flow modificato senza conferma separata** (modifica e attivazione sono due step distinti)
+- **Operazioni batch sempre interrompibili** — se l'utente manda "stop" a metà, il sistema si ferma e mostra cosa è già stato modificato
+- **Dry-run disponibile sempre** — l'utente può chiedere "cosa faresti?" senza che nulla venga applicato
+
+---
+
 ## Flusso utente tipo
 
 ```
@@ -114,11 +161,12 @@ Questo è il punto critico. Le API key n8n danno accesso completo ai workflow de
 2. Se prima volta: incolla la sua n8n API key → salvata cifrata
 3. "Il flusso sync-products si rompe ogni notte"
 4. Orchestrator → Analyzer legge il flusso + ultimi execution errors
-5. Analyzer → Fixer propone correzione
+5. Analyzer → Fixer propone correzione con diff leggibile
 6. Fixer → Validator controlla la patch
-7. Orchestrator presenta all'utente: "Ho trovato X, propongo Y. Applico?"
-8. Utente conferma → update_workflow + activate_workflow
-9. Audit log aggiornato
+7. Bot mostra all'utente: diff + spiegazione. "Applico?" [Sì / No / Dettagli]
+8. Utente conferma modifica → update_workflow
+9. Bot chiede separatamente: "Riattivo il flow?" [Sì / No]
+10. Audit log aggiornato
 ```
 
 ---
