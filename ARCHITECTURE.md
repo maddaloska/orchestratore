@@ -123,21 +123,35 @@ Questo è il punto critico. Le API key n8n danno accesso completo ai workflow de
 
 ---
 
-## Decisioni aperte (da risolvere nella prossima sessione)
+## Decisioni prese
 
-- [ ] Interfaccia chatbot: web app custom, Telegram bot, o Slack app?
-- [ ] Store credenziali: Supabase (già disponibile?) o altro?
-- [ ] Entitlement cross-profilo: gestito solo da n8n (ruoli nativi) o serve una lista separata?
-- [ ] URL esatto istanza n8n AME Digital
-- [ ] Modello agenti: un file per agente o classe con ruolo iniettato?
-- [ ] Deploy: GitHub Actions (già presente) o server dedicato sempre acceso?
+| Decisione | Scelta | Note |
+|-----------|--------|-------|
+| Interfaccia chatbot | **Telegram bot** | Il più comodo da prototipare e usare su mobile; `python-telegram-bot` si integra facilmente con il loop agente |
+| Store credenziali | **Supabase aziendale** | Già disponibile, tabella `user_credentials` con key cifrate; master key in env var |
+| URL istanza n8n | `https://n8n.amedigital.it` | API base: `https://n8n.amedigital.it/api/v1/` |
 
 ---
 
-## Stack tecnico attuale
+## Decisioni aperte (da risolvere nella prossima sessione)
 
-- `agent/orchestrator.py` — loop Claude + tool dispatch (base già funzionante)
+- [ ] Entitlement cross-profilo: gestito solo da n8n (ruoli nativi) o serve una lista separata?
+- [ ] Modello agenti: un file per agente o classe con ruolo iniettato?
+- [ ] Deploy: server sempre acceso (necessario per il bot Telegram) — VPS, Railway, Render, o altro?
+- [ ] Telegram: bot privato (solo whitelist chat_id del team) o con auth propria?
+
+---
+
+## Stack tecnico
+
+### Attuale
+- `agent/orchestrator.py` — loop Claude + tool dispatch (base funzionante)
 - `agent/requirements.txt` — `anthropic>=0.102.0`, `httpx>=0.28.1`
 - `.github/workflows/agent-orchestrator.yml` — trigger manuale + cron
 
-Da aggiungere: tool n8n completi, credential store, layer chatbot, agenti specializzati.
+### Da aggiungere
+- `agent/tools/n8n.py` — tool layer completo (list/get/update/activate workflow + executions)
+- `agent/tools/credentials.py` — cifratura/decifratura key con Supabase
+- `agent/agents/` — Analyzer, Fixer, Validator come moduli separati
+- `bot/telegram_bot.py` — entry point Telegram, gestione sessioni utente
+- `bot/requirements.txt` — aggiungere `python-telegram-bot`
