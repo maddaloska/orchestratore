@@ -7,8 +7,8 @@ on:
         description: "Task to assign to the Claude agent"
         required: false
         default: "List all available flows and trigger each one."
-  schedule:
-    - cron: "0 8 * * *"  # daily at 08:00 UTC
+  # schedule:
+  #   - cron: "0 8 * * *"  # daily at 08:00 UTC — riabilitare quando secrets sono configurati
 
 permissions:
   contents: read
